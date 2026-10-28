@@ -1,5 +1,5 @@
 // Cloudflare Worker: public proxy that keeps the Groq key off the browser.
-const ALLOWED_ORIGINS = ['https://domvq.github.io/ai-study-app/']; // add a custom domain here if you use one
+const ALLOWED_ORIGINS = ['https://domvq.github.io']; // add a custom domain here if you use one
 const SEARCH_MODEL = 'groq/compound-mini';   // has built-in web search
 const PLAIN_MODEL = 'openai/gpt-oss-120b';   // used when web search is off
 
