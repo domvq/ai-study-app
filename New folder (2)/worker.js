@@ -1,10 +1,15 @@
 // Cloudflare Worker: public proxy that keeps the Groq key off the browser.
-const ALLOWED_ORIGINS = ['https://domvq.github.io']; // add a custom domain here if you use one
-const SEARCH_MODEL = 'groq/compound-mini';   // has built-in web search
-const PLAIN_MODEL = 'openai/gpt-oss-120b';   // used when web search is off
+const ALLOWED_ORIGINS = ['https://YOUR-USERNAME.github.io']; // add a custom domain here if you use one
+const MODEL = 'openai/gpt-oss-120b'; // supports Groq's built-in browser_search tool
 
 const reply = (obj, status, cors) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, 'content-type': 'application/json' } });
+
+const groq = (body, env) => fetch('https://api.groq.com/openai/v1/chat/completions', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + env.GROQ_API_KEY },
+  body: JSON.stringify(body)
+});
 
 export default {
   async fetch(req, env) {
@@ -27,21 +32,22 @@ export default {
     try { b = await req.json(); } catch { return reply({ error: { message: 'Bad request.' } }, 400, cors); }
     if (!Array.isArray(b.messages) || b.messages.length > 40) return reply({ error: { message: 'Bad request.' } }, 400, cors);
 
-    // Only these fields are forwarded, so visitors cannot pick the model.
-    const model = b.search ? SEARCH_MODEL : PLAIN_MODEL;
+    // Only these fields are forwarded, so visitors cannot pick the model or tools.
     const body = {
-      model,
+      model: MODEL,
       max_completion_tokens: Math.min(+b.max_tokens || 3000, 5000),
       temperature: 0.4,
+      reasoning_effort: 'low',
       messages: [{ role: 'system', content: String(b.system || '').slice(0, 4000) }, ...b.messages]
     };
-    if (model.includes('gpt-oss')) body.reasoning_effort = 'low';
+    if (b.search) { body.tools = [{ type: 'browser_search' }]; body.tool_choice = 'required'; }
 
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + env.GROQ_API_KEY },
-      body: JSON.stringify(body)
-    });
+    let r = await groq(body, env);
+    // If the search request is rejected or too big for the free limits, answer without search.
+    if (b.search && [400, 404, 413].includes(r.status)) {
+      delete body.tools; delete body.tool_choice;
+      r = await groq(body, env);
+    }
     return new Response(r.body, { status: r.status, headers: { ...cors, 'content-type': 'application/json' } });
   }
 };
