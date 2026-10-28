@@ -160,9 +160,16 @@ async function call(prompt, { search = true, max = 4000, system = SYSTEM, histor
   if (r.status === 429) throw new Error('The free AI service is busy right now. Wait a minute and try again. If it keeps happening, the daily limit may be used up.');
   if (!r.ok) throw new Error(data?.error?.message || 'Request failed (' + r.status + ')');
   const m = data.choices?.[0]?.message || {};
-  (m.executed_tools || []).forEach(t => (t.search_results?.results || []).forEach(x => x.url && addSource(x.url, x.title)));
+  collectSources(m.executed_tools);
   drawSources();
-  return String(m.content || '').trim();
+  return String(m.content || '').replace(/【[^】]*】/g, '').trim();
+}
+function collectSources(o, d = 0){
+  if (!o || d > 6) return;
+  if (Array.isArray(o)) return o.forEach(x => collectSources(x, d + 1));
+  if (typeof o !== 'object') return;
+  if (typeof o.url === 'string' && /^https?:/.test(o.url)) addSource(o.url, o.title);
+  Object.values(o).forEach(v => collectSources(v, d + 1));
 }
 function addSource(url, title){ if (!S.sources.some(s => s.url === url)) S.sources.push({ url, title: title || url }); }
 function drawSources(){
